@@ -1,0 +1,42 @@
+<Window x:Class="AiRateLimits.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="AI Rate Limits"
+        Width="380" Height="480"
+        WindowStartupLocation="CenterScreen"
+        Background="#1E1E1E"
+        Foreground="#E0E0E0"
+        FontFamily="Segoe UI"
+        ShowInTaskbar="True">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock x:Name="SummaryText"
+                   Grid.Row="0"
+                   FontSize="16" FontWeight="SemiBold"
+                   Text="Loading…" />
+
+        <TextBlock x:Name="LastUpdateText"
+                   Grid.Row="1"
+                   Margin="0,4,0,12"
+                   FontSize="11" Foreground="#9E9E9E"
+                   Text="" />
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="ProvidersPanel" />
+        </ScrollViewer>
+
+        <Button x:Name="RefreshButton"
+                Grid.Row="3"
+                Margin="0,12,0,0"
+                Padding="12,6"
+                HorizontalAlignment="Right"
+                Content="Refresh now"
+                Click="RefreshButton_Click" />
+    </Grid>
+</Window>
