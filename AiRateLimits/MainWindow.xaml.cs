@@ -17,21 +17,22 @@ public partial class MainWindow : Window
         InitializeComponent();
         _monitor = monitor;
         _monitor.Updated += OnUpdated;
-        Render(_monitor.Snapshots);
+        Render();
     }
 
     private void OnUpdated(IReadOnlyDictionary<string, VendorRateLimitSnapshot> snapshots) =>
-        Dispatcher.Invoke(() => Render(snapshots));
+        Dispatcher.Invoke(Render);
 
-    private void Render(IReadOnlyDictionary<string, VendorRateLimitSnapshot> snapshots)
+    private void Render()
     {
         var aggregate = _monitor.AggregateHealth();
         SummaryText.Text = $"Status: {aggregate.Health}";
         SummaryText.Foreground = new SolidColorBrush(MediaColorFor(aggregate.Health));
         LastUpdateText.Text = $"Last update: {DateTimeOffset.Now:HH:mm:ss}";
 
+        // Auto-display: only providers that actually returned data are shown.
         ProvidersPanel.Children.Clear();
-        foreach (var snapshot in snapshots.Values)
+        foreach (var snapshot in _monitor.FoundSnapshots)
         {
             ProvidersPanel.Children.Add(BuildProviderBlock(snapshot));
         }
@@ -40,7 +41,7 @@ public partial class MainWindow : Window
         {
             ProvidersPanel.Children.Add(new TextBlock
             {
-                Text = "No enabled providers have returned data yet.",
+                Text = "No provider data found yet. Searching…",
                 Foreground = new SolidColorBrush(Color.FromRgb(0x9E, 0x9E, 0x9E)),
                 TextWrapping = TextWrapping.Wrap
             });

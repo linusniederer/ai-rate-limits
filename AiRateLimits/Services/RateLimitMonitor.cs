@@ -6,7 +6,9 @@ namespace AiRateLimits.Services;
 
 /// <summary>
 /// Owns the providers, polls them, and exposes the latest snapshots plus computed health.
-/// Scaffold version implements normal + unknown-state polling and a non-overlapping refresh.
+/// All providers are polled every refresh; any provider that returns data ("found") is shown
+/// automatically — there is no manual enable step. Implements normal + unknown-state polling
+/// and a non-overlapping refresh.
 /// TODO: reset-aware extra polling and notification dispatch.
 /// </summary>
 public sealed class RateLimitMonitor : IDisposable
@@ -33,6 +35,10 @@ public sealed class RateLimitMonitor : IDisposable
 
     public IReadOnlyDictionary<string, VendorRateLimitSnapshot> Snapshots => _snapshots;
 
+    /// <summary>Snapshots for providers that actually returned data; these are the ones to display.</summary>
+    public IReadOnlyList<VendorRateLimitSnapshot> FoundSnapshots =>
+        _snapshots.Values.Where(s => s.Buckets.Count > 0).ToList();
+
     public AppSettings Settings => _settings;
 
     public void ReloadSettings() => _settings = _settingsStore.Load();
@@ -53,14 +59,9 @@ public sealed class RateLimitMonitor : IDisposable
 
         try
         {
+            // Poll every provider; found ones (with data) are surfaced automatically.
             foreach (var provider in _providers)
             {
-                if (!_settings.EnabledVendors.Contains(provider.Id, StringComparer.OrdinalIgnoreCase))
-                {
-                    _snapshots.Remove(provider.Id);
-                    continue;
-                }
-
                 try
                 {
                     _snapshots[provider.Id] = await provider.ReadAsync(cancellationToken).ConfigureAwait(false);
@@ -98,8 +99,10 @@ public sealed class RateLimitMonitor : IDisposable
         HealthCalculator.Aggregate(
             _snapshots.Values, _settings.WarningUsedPercent, _settings.CriticalUsedPercent);
 
+    // Fast-retry while nothing has been found yet (e.g. wake-from-sleep, before the first
+    // statusline refresh, or a provider whose data just became available).
     private TimeSpan NextInterval() =>
-        StatusProviderHealth().Health == LimitHealth.Unknown
+        AggregateHealth().Health == LimitHealth.Unknown
             ? UnknownRetryInterval
             : TimeSpan.FromMinutes(_settings.RefreshMinutes);
 

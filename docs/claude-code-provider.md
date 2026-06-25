@@ -45,14 +45,10 @@ The provider and the helper agree on this path.
    Use `pwsh` (PowerShell 7+) if installed, otherwise `powershell`. If you already have a
    statusline script, merge the file-writing block from the helper into it instead of replacing it.
 
-2. Enable the provider. Until the settings UI exists, add `"claude"` to `EnabledVendors` in
-   `%APPDATA%\AiRateLimits\settings.json`:
+2. Open a Claude Code session so the statusline runs at least once and populates the file.
 
-   ```json
-   { "EnabledVendors": [ "codex", "claude" ] }
-   ```
-
-3. Open a Claude Code session so the statusline runs at least once and populates the file.
+That's it — no manual enabling. Every provider that finds data is displayed automatically, so
+the Claude Code panel appears as soon as the file has rate-limit windows.
 
 ## Behavior and limitations
 

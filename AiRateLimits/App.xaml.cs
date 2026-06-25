@@ -118,7 +118,8 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        var health = _monitor.StatusProviderHealth().Health;
+        // Tray reflects the worst across all found providers, matching the auto-display model.
+        var health = _monitor.AggregateHealth().Health;
         Dispatcher.Invoke(() =>
         {
             var old = _trayIcon.Icon;
