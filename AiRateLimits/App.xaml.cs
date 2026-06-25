@@ -1,10 +1,14 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using AiRateLimits.Models;
 using AiRateLimits.Providers;
+using AiRateLimits.Providers.Copilot;
 using AiRateLimits.Services;
 using Serilog;
 using WinForms = System.Windows.Forms;
+using MessageBox = System.Windows.MessageBox;
+using Clipboard = System.Windows.Clipboard;
 
 namespace AiRateLimits;
 
@@ -14,6 +18,8 @@ public partial class App : System.Windows.Application
     private RateLimitMonitor? _monitor;
     private WinForms.NotifyIcon? _trayIcon;
     private MainWindow? _mainWindow;
+    private SettingsStore? _settingsStore;
+    private bool _copilotLoginInProgress;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -42,9 +48,10 @@ public partial class App : System.Windows.Application
         {
             new CodexRateLimitProvider(),
             new ClaudeCodeRateLimitProvider(),
-            new JetBrainsRateLimitProvider(),
-            new CopilotRateLimitProvider()
+            new JetBrainsRateLimitProvider(settingsStore),
+            new CopilotRateLimitProvider(settingsStore)
         };
+        _settingsStore = settingsStore;
 
         _monitor = new RateLimitMonitor(providers, settingsStore);
         _monitor.Updated += OnMonitorUpdated;
@@ -98,6 +105,8 @@ public partial class App : System.Windows.Application
             }
         });
         menu.Items.Add(new WinForms.ToolStripSeparator());
+        menu.Items.Add("GitHub Copilot Login…", null, async (_, _) => await StartCopilotLoginAsync());
+        menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitApp());
         _trayIcon.ContextMenuStrip = menu;
 
@@ -143,6 +152,67 @@ public partial class App : System.Windows.Application
 
         _mainWindow.Activate();
         _ = _monitor?.RefreshAsync();
+    }
+
+    private async Task StartCopilotLoginAsync()
+    {
+        if (_copilotLoginInProgress)
+        {
+            return;
+        }
+
+        _copilotLoginInProgress = true;
+        try
+        {
+            var enterpriseHost = _settingsStore?.Load().CopilotEnterpriseHost;
+
+            void OnCodeReady(CopilotLogin.DeviceCode code)
+            {
+                // Non-blocking so device-code polling can run while the dialog is open.
+                Dispatcher.BeginInvoke(() =>
+                {
+                    try { Clipboard.SetText(code.UserCode); } catch { /* clipboard may be busy */ }
+
+                    var url = code.VerificationUriComplete ?? code.VerificationUri;
+                    try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); }
+                    catch (Exception ex) { Log.Warning(ex, "Could not open browser for Copilot login"); }
+
+                    MessageBox.Show(
+                        $"Enter this code in your browser to authorize GitHub Copilot:\n\n" +
+                        $"{code.UserCode}\n\n(copied to clipboard)\n\n{url}",
+                        "GitHub Copilot Login",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                });
+            }
+
+            var result = await CopilotLogin.RunAsync(enterpriseHost, OnCodeReady, CancellationToken.None);
+
+            await Dispatcher.InvokeAsync(() =>
+            {
+                if (result.Success)
+                {
+                    MessageBox.Show(
+                        $"Signed in as {result.Login}.",
+                        "GitHub Copilot Login", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        $"Login failed: {result.Error}",
+                        "GitHub Copilot Login", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            });
+
+            if (result.Success && _monitor is not null)
+            {
+                await _monitor.RefreshAsync();
+            }
+        }
+        finally
+        {
+            _copilotLoginInProgress = false;
+        }
     }
 
     private void ExitApp()
