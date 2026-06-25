@@ -3,6 +3,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using AiRateLimits.Models;
+using AiRateLimits.Providers;
+using AiRateLimits.Providers.Copilot;
 using AiRateLimits.Services;
 using Color = System.Windows.Media.Color;
 
@@ -11,11 +13,13 @@ namespace AiRateLimits;
 public partial class MainWindow : Window
 {
     private readonly RateLimitMonitor _monitor;
+    private readonly Func<Task> _copilotLogin;
 
-    public MainWindow(RateLimitMonitor monitor)
+    public MainWindow(RateLimitMonitor monitor, Func<Task> copilotLogin)
     {
         InitializeComponent();
         _monitor = monitor;
+        _copilotLogin = copilotLogin;
         _monitor.Updated += OnUpdated;
         Render();
     }
@@ -45,6 +49,39 @@ public partial class MainWindow : Window
                 Foreground = new SolidColorBrush(Color.FromRgb(0x9E, 0x9E, 0x9E)),
                 TextWrapping = TextWrapping.Wrap
             });
+        }
+
+        UpdateCopilotStatus();
+    }
+
+    private void UpdateCopilotStatus()
+    {
+        var credential = WindowsCredential.Read(CopilotHosts.CredentialTarget);
+        var loggedIn = credential is not null && !string.IsNullOrWhiteSpace(credential.Secret);
+
+        if (loggedIn)
+        {
+            CopilotStatusText.Text = $"Copilot: signed in as {credential!.UserName}";
+            CopilotLoginButton.Content = "Re-login";
+        }
+        else
+        {
+            CopilotStatusText.Text = "Copilot: not signed in";
+            CopilotLoginButton.Content = "GitHub Copilot Login";
+        }
+    }
+
+    private async void CopilotLoginButton_Click(object sender, RoutedEventArgs e)
+    {
+        CopilotLoginButton.IsEnabled = false;
+        try
+        {
+            await _copilotLogin();
+        }
+        finally
+        {
+            CopilotLoginButton.IsEnabled = true;
+            UpdateCopilotStatus();
         }
     }
 

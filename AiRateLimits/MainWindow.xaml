@@ -31,12 +31,24 @@
             <StackPanel x:Name="ProvidersPanel" />
         </ScrollViewer>
 
-        <Button x:Name="RefreshButton"
-                Grid.Row="3"
-                Margin="0,12,0,0"
-                Padding="12,6"
-                HorizontalAlignment="Right"
-                Content="Refresh now"
-                Click="RefreshButton_Click" />
+        <DockPanel Grid.Row="3" Margin="0,12,0,0">
+            <Button x:Name="RefreshButton"
+                    DockPanel.Dock="Right"
+                    Padding="12,6"
+                    Content="Refresh now"
+                    Click="RefreshButton_Click" />
+            <Button x:Name="CopilotLoginButton"
+                    DockPanel.Dock="Left"
+                    Padding="12,6"
+                    Content="GitHub Copilot Login"
+                    Click="CopilotLoginButton_Click" />
+            <TextBlock x:Name="CopilotStatusText"
+                       VerticalAlignment="Center"
+                       Margin="10,0,0,0"
+                       FontSize="11"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="#9E9E9E"
+                       Text="" />
+        </DockPanel>
     </Grid>
 </Window>
