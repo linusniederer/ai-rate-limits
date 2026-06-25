@@ -41,6 +41,7 @@ public partial class App : System.Windows.Application
         var providers = new IRateLimitProvider[]
         {
             new CodexRateLimitProvider(),
+            new ClaudeCodeRateLimitProvider(),
             new JetBrainsRateLimitProvider(),
             new CopilotRateLimitProvider()
         };
