@@ -12,8 +12,11 @@ public static class AutostartManager
     private const string ValueName = "AiRateLimits-8F2D4D4F";
     private const string MinimizedArg = "--minimized";
 
+    // Environment.ProcessPath is the running .exe (correct for single-file); AppContext.BaseDirectory
+    // is a safe fallback that, unlike Assembly.Location, is not empty in a single-file app.
     private static string ExecutablePath =>
-        Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+        Environment.ProcessPath
+        ?? System.IO.Path.Combine(AppContext.BaseDirectory, "AiRateLimits.exe");
 
     private static string DesiredCommand => $"\"{ExecutablePath}\" {MinimizedArg}";
 
