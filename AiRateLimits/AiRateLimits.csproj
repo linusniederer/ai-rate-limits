@@ -10,9 +10,14 @@
     <RootNamespace>AiRateLimits</RootNamespace>
     <AssemblyName>AiRateLimits</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\App.ico</ApplicationIcon>
     <!-- Tray icon lives in WinForms; both UI frameworks coexist. -->
     <Version>0.1.0</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\App.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
