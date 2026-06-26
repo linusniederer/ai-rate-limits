@@ -26,7 +26,8 @@
     common case where no instance is running (taskkill returns a non-zero exit code then).
   -->
   <Target Name="StopRunningInstance" BeforeTargets="BeforeBuild" Condition="'$(OS)' == 'Windows_NT'">
-    <Exec Command="taskkill /F /IM AiRateLimits.exe /T" ContinueOnError="true" />
+    <!-- IgnoreExitCode so the common "no such process" (exit 128) does not warn. -->
+    <Exec Command="taskkill /F /IM AiRateLimits.exe /T 2&gt;nul" IgnoreExitCode="true" />
   </Target>
 
 </Project>
