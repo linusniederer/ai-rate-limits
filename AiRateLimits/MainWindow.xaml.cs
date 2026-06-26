@@ -22,6 +22,7 @@ public partial class MainWindow : Window
     private readonly Func<Task> _copilotLogin;
     private readonly Action _requestExit;
     private string? _selectedProvider;
+    private string? _updateUrl;
 
     public MainWindow(RateLimitMonitor monitor, SettingsStore settingsStore, Func<Task> copilotLogin,
         Action requestExit)
@@ -34,6 +35,43 @@ public partial class MainWindow : Window
         _monitor.Updated += OnUpdated;
         Render();
         ShowDefaultView();
+        _ = CheckForUpdateAsync();
+    }
+
+    private async Task CheckForUpdateAsync()
+    {
+        var result = await new UpdateChecker().CheckAsync(CancellationToken.None);
+        if (result is null)
+        {
+            return;
+        }
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            _updateUrl = result.Url;
+            UpdateBannerText.Text = $"Update available — {result.LatestVersion}. Click to download.";
+            UpdateBanner.Visibility = Visibility.Visible;
+        });
+    }
+
+    private void UpdateBanner_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_updateUrl))
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_updateUrl)
+            {
+                UseShellExecute = true
+            });
+        }
+        catch
+        {
+            // Ignore if no browser is available.
+        }
     }
 
     private void OnUpdated(IReadOnlyDictionary<string, VendorRateLimitSnapshot> snapshots) =>

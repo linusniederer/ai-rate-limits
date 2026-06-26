@@ -78,8 +78,14 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Status header -->
-                <Border Grid.Row="0" Background="{StaticResource CardBrush}" CornerRadius="12" Padding="16,14">
+                <!-- Status header (+ optional update banner) -->
+                <StackPanel Grid.Row="0">
+                <Border x:Name="UpdateBanner" Background="{StaticResource AccentBrush}" CornerRadius="10"
+                        Padding="12,8" Margin="0,0,0,10" Cursor="Hand" Visibility="Collapsed"
+                        MouseLeftButtonUp="UpdateBanner_Click">
+                    <TextBlock x:Name="UpdateBannerText" Foreground="White" FontSize="12" FontWeight="SemiBold" />
+                </Border>
+                <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="16,14">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -101,6 +107,7 @@
                                    VerticalAlignment="Center" Foreground="{StaticResource TextMutedBrush}" />
                     </Grid>
                 </Border>
+                </StackPanel>
 
                 <!-- Provider tabs -->
                 <StackPanel x:Name="TabsPanel" Grid.Row="1" Orientation="Horizontal" Margin="0,16,0,4" />
