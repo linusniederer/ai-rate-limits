@@ -20,4 +20,13 @@
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
   </ItemGroup>
 
+  <!--
+    The running tray app locks AiRateLimits.exe and blocks the build. Close any running
+    instance before building so the output can be overwritten. ContinueOnError covers the
+    common case where no instance is running (taskkill returns a non-zero exit code then).
+  -->
+  <Target Name="StopRunningInstance" BeforeTargets="BeforeBuild" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="taskkill /F /IM AiRateLimits.exe /T" ContinueOnError="true" />
+  </Target>
+
 </Project>
