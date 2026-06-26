@@ -211,6 +211,13 @@ public partial class MainWindow : Window
             _selectedProvider = snapshot.VendorId;
             Render();
         };
+
+        if (!selected)
+        {
+            tab.MouseEnter += (_, _) => tab.Background = Brush("SurfaceBrush");
+            tab.MouseLeave += (_, _) => tab.Background = Brushes.Transparent;
+        }
+
         return tab;
     }
 

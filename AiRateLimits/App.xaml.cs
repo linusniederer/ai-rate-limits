@@ -164,6 +164,17 @@ public partial class App : System.Windows.Application
         {
             var provider = ProviderNameFor(snapshots, bucket);
             text = $"{provider} {bucket.Name}: {bucket.RemainingPercent:0.#}% available.";
+
+            if (bucket.ResetAt is { } reset)
+            {
+                var remaining = reset - DateTimeOffset.Now;
+                if (remaining > TimeSpan.Zero)
+                {
+                    text += remaining.TotalHours >= 1
+                        ? $" Resets in {(int)remaining.TotalHours}h {remaining.Minutes}m."
+                        : $" Resets in {remaining.Minutes}m.";
+                }
+            }
         }
         else
         {
