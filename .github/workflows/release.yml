@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Determine release vars
+        id: vars
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=nightly" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish (self-contained, single-file, win-x64)
+        run: >
+          dotnet publish AiRateLimits/AiRateLimits.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:PublishReadyToRun=true
+          -p:EnableCompressionInSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -o publish
+
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          zip="AiRateLimits-${{ steps.vars.outputs.tag }}-win-x64.zip"
+          7z a "$zip" ./publish/* >/dev/null
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.vars.outputs.tag }}"
+          zip="${{ steps.package.outputs.zip }}"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            gh release create "$tag" "$zip" \
+              --title "AI Rate Limits $tag" \
+              --generate-notes
+          else
+            # Rolling nightly: recreate so the tag tracks the latest main commit.
+            gh release delete nightly --yes --cleanup-tag || true
+            gh release create nightly "$zip" \
+              --title "AI Rate Limits (nightly)" \
+              --notes "Rolling build from main (${GITHUB_SHA:0:7})." \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          fi
