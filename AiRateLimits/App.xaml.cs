@@ -56,7 +56,7 @@ public partial class App : System.Windows.Application
         _monitor = new RateLimitMonitor(providers, settingsStore);
         _monitor.Updated += OnMonitorUpdated;
 
-        _mainWindow = new MainWindow(_monitor, StartCopilotLoginAsync);
+        _mainWindow = new MainWindow(_monitor, settingsStore, StartCopilotLoginAsync);
 
         InitializeTrayIcon();
 
