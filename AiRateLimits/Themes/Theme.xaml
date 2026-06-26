@@ -54,7 +54,7 @@
 
     <!-- ============ Square icon action button ============ -->
     <Style x:Key="IconActionButton" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        <Setter Property="Background" Value="{StaticResource TextMutedBrush}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
