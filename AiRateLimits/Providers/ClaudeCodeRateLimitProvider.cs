@@ -92,6 +92,7 @@ public sealed class ClaudeCodeRateLimitProvider : IRateLimitProvider
         var buckets = new List<RateLimitBucket>();
         AddApiWindow(buckets, container, FiveHourName, TimeSpan.FromHours(5), "five_hour", "5h");
         AddApiWindow(buckets, container, WeeklyName, TimeSpan.FromDays(7), "seven_day", "7d");
+        AddExtraUsage(buckets, doc.RootElement);
 
         if (buckets.Count == 0)
         {
@@ -102,6 +103,46 @@ public sealed class ClaudeCodeRateLimitProvider : IRateLimitProvider
         return new VendorRateLimitSnapshot(
             Id, DisplayName, SourceApi, PlanType: null, buckets, CostUsage: null,
             ObservedAt: DateTimeOffset.Now, Error: null);
+    }
+
+    /// <summary>
+    /// Adds an informational "Usage credits" bucket from extra_usage, but only when it is enabled.
+    /// Never affects health (it is overflow spend, not a plan limit).
+    /// </summary>
+    private static void AddExtraUsage(List<RateLimitBucket> buckets, JsonElement root)
+    {
+        if (!root.TryGetProperty("extra_usage", out var ex) || ex.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        if (GetBool(ex, "is_enabled") != true)
+        {
+            return;
+        }
+
+        var utilization = FirstDouble(ex, "utilization") ?? 0.0;
+        var decimals = (int)(FirstDouble(ex, "decimal_places") ?? 0);
+        var divisor = Math.Pow(10, decimals);
+        var used = FirstDouble(ex, "used_credits");
+        var limit = FirstDouble(ex, "monthly_limit");
+        var currency = GetString(ex, "currency");
+
+        string? valueText = null;
+        if (used is { } u && limit is { } l && l > 0)
+        {
+            var suffix = string.IsNullOrWhiteSpace(currency) ? "" : $" {currency}";
+            valueText = $"{u / divisor:0.##} / {l / divisor:0.##}{suffix} used";
+        }
+
+        buckets.Add(new RateLimitBucket(
+            "Usage credits",
+            Math.Clamp(utilization, 0.0, 100.0),
+            Window: null,
+            ResetAt: null,
+            AffectsHealth: false,
+            Note: "Extra usage credits — cover you beyond plan limits.",
+            ValueText: valueText));
     }
 
     private static JsonElement FindRateLimitsContainer(JsonElement root)
@@ -229,6 +270,26 @@ public sealed class ClaudeCodeRateLimitProvider : IRateLimitProvider
         buckets.Add(new RateLimitBucket(
             displayName, Math.Clamp(usedPercent, 0.0, 100.0), window, resetAt, Note: note));
     }
+
+    private static bool? GetBool(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            _ => null
+        };
+    }
+
+    private static string? GetString(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 
     private static double? FirstDouble(JsonElement element, params string[] names)
     {
