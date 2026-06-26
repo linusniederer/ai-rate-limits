@@ -268,6 +268,102 @@ public partial class MainWindow : Window
         {
             DetailPanel.Children.Add(BuildBucketCard(bucket));
         }
+
+        if (snapshot.CostUsage is { HasUsage: true } cost)
+        {
+            DetailPanel.Children.Add(BuildCostCard(cost));
+        }
+    }
+
+    private Border BuildCostCard(CostUsageSnapshot cost)
+    {
+        var panel = new StackPanel();
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = "ESTIMATED COST",
+            FontSize = 10,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brush("TextMutedBrush"),
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var thisMonth = new StackPanel();
+        thisMonth.Children.Add(new TextBlock
+        {
+            Text = $"${cost.MonthCostUsd:0.00}",
+            FontSize = 20,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Brush("TextBrush")
+        });
+        thisMonth.Children.Add(new TextBlock
+        {
+            Text = $"this month · {FormatTokens(cost.MonthTokens)} tokens · {cost.MonthRequests} req",
+            FontSize = 10.5,
+            Foreground = Brush("TextMutedBrush"),
+            Margin = new Thickness(0, 1, 0, 0)
+        });
+        Grid.SetColumn(thisMonth, 0);
+        row.Children.Add(thisMonth);
+
+        if (cost.PreviousMonth is { } prev)
+        {
+            var lastMonth = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom };
+            lastMonth.Children.Add(new TextBlock
+            {
+                Text = $"${prev.MonthCostUsd:0.00}",
+                FontSize = 13,
+                FontWeight = FontWeights.Medium,
+                Foreground = Brush("TextSecondaryBrush"),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+            });
+            lastMonth.Children.Add(new TextBlock
+            {
+                Text = "last month",
+                FontSize = 10.5,
+                Foreground = Brush("TextMutedBrush"),
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+            });
+            Grid.SetColumn(lastMonth, 1);
+            row.Children.Add(lastMonth);
+        }
+
+        panel.Children.Add(row);
+
+        panel.Children.Add(new TextBlock
+        {
+            Text = $"Estimate from local logs · {cost.Source}",
+            FontSize = 10,
+            Foreground = Brush("TextMutedBrush"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 8, 0, 0)
+        });
+
+        return new Border
+        {
+            Background = Brush("CardBrush"),
+            CornerRadius = new CornerRadius(12),
+            Padding = new Thickness(14, 12, 14, 12),
+            Margin = new Thickness(0, 4, 0, 10),
+            Child = panel
+        };
+    }
+
+    private static string FormatTokens(long tokens)
+    {
+        if (tokens >= 1_000_000)
+        {
+            return $"{tokens / 1_000_000.0:0.#}M";
+        }
+        if (tokens >= 1_000)
+        {
+            return $"{tokens / 1_000.0:0.#}k";
+        }
+        return tokens.ToString();
     }
 
     private Border BuildBucketCard(RateLimitBucket bucket)
