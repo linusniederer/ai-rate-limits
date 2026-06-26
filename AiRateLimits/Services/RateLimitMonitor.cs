@@ -15,6 +15,13 @@ public sealed class RateLimitMonitor : IDisposable
 {
     private static readonly TimeSpan UnknownRetryInterval = TimeSpan.FromSeconds(10);
 
+    // Reset-aware polling: start watching one minute before a reported reset, poll every five
+    // seconds through it, and keep watching briefly afterwards until the provider reports a new
+    // reset (or health changes).
+    private static readonly TimeSpan ResetPreWatch = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan ResetWatchInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ResetTrail = TimeSpan.FromMinutes(2);
+
     private readonly IReadOnlyList<IRateLimitProvider> _providers;
     private readonly SettingsStore _settingsStore;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
@@ -100,11 +107,68 @@ public sealed class RateLimitMonitor : IDisposable
             _snapshots.Values, _settings.WarningUsedPercent, _settings.CriticalUsedPercent);
 
     // Fast-retry while nothing has been found yet (e.g. wake-from-sleep, before the first
-    // statusline refresh, or a provider whose data just became available).
-    private TimeSpan NextInterval() =>
-        AggregateHealth().Health == LimitHealth.Unknown
+    // statusline refresh). Otherwise the normal interval, shortened around a reported reset.
+    private TimeSpan NextInterval()
+    {
+        var normal = AggregateHealth().Health == LimitHealth.Unknown
             ? UnknownRetryInterval
             : TimeSpan.FromMinutes(_settings.RefreshMinutes);
+
+        var soonestReset = SoonestUpcomingReset();
+        if (soonestReset is not { } resetAt)
+        {
+            return normal;
+        }
+
+        var now = DateTimeOffset.Now;
+        var preStart = resetAt - ResetPreWatch;
+
+        // In the watch window (1 min before until a short trail after): poll fast.
+        if (now >= preStart && now <= resetAt + ResetTrail)
+        {
+            return Min(ResetWatchInterval, normal);
+        }
+
+        // The watch window starts before the next normal poll would run: wake right at it.
+        if (preStart > now && preStart - now < normal)
+        {
+            return preStart - now;
+        }
+
+        return normal;
+    }
+
+    /// <summary>Soonest reset among health-affecting buckets, including a short trailing window.</summary>
+    private DateTimeOffset? SoonestUpcomingReset()
+    {
+        var now = DateTimeOffset.Now;
+        DateTimeOffset? soonest = null;
+
+        foreach (var snapshot in _snapshots.Values)
+        {
+            foreach (var bucket in snapshot.Buckets)
+            {
+                if (!bucket.AffectsHealth || bucket.ResetAt is not { } reset)
+                {
+                    continue;
+                }
+
+                if (reset < now - ResetTrail)
+                {
+                    continue; // already well past; not worth watching
+                }
+
+                if (soonest is null || reset < soonest)
+                {
+                    soonest = reset;
+                }
+            }
+        }
+
+        return soonest;
+    }
+
+    private static TimeSpan Min(TimeSpan a, TimeSpan b) => a < b ? a : b;
 
     private void ScheduleNext(TimeSpan delay) =>
         _timer?.Change(delay, Timeout.InfiniteTimeSpan);

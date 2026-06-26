@@ -20,6 +20,7 @@ public partial class App : System.Windows.Application
     private MainWindow? _mainWindow;
     private SettingsStore? _settingsStore;
     private bool _copilotLoginInProgress;
+    private LimitHealth? _lastNotifiedHealth;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -128,13 +129,69 @@ public partial class App : System.Windows.Application
         }
 
         // Tray reflects the worst across all found providers, matching the auto-display model.
-        var health = _monitor.AggregateHealth().Health;
+        var result = _monitor.AggregateHealth();
         Dispatcher.Invoke(() =>
         {
             var old = _trayIcon.Icon;
-            _trayIcon.Icon = TrayIconFactory.Create(health);
+            _trayIcon.Icon = TrayIconFactory.Create(result.Health);
             old?.Dispose();
+
+            MaybeNotify(result, snapshots);
         });
+    }
+
+    /// <summary>
+    /// Shows a tray balloon when the aggregate health changes between known states (and once for
+    /// the first known state). Unknown is never notified — it is only conveyed via tray color/UI.
+    /// </summary>
+    private void MaybeNotify(
+        HealthCalculator.HealthResult result,
+        IReadOnlyDictionary<string, VendorRateLimitSnapshot> snapshots)
+    {
+        if (_trayIcon is null || result.Health == LimitHealth.Unknown || result.Health == _lastNotifiedHealth)
+        {
+            return;
+        }
+
+        _lastNotifiedHealth = result.Health;
+
+        string text;
+        if (result.Health == LimitHealth.Healthy)
+        {
+            text = "All limits are healthy.";
+        }
+        else if (result.WorstBucket is { } bucket)
+        {
+            var provider = ProviderNameFor(snapshots, bucket);
+            text = $"{provider} {bucket.Name}: {bucket.RemainingPercent:0.#}% available.";
+        }
+        else
+        {
+            text = $"Status is now {result.Health}.";
+        }
+
+        var icon = result.Health switch
+        {
+            LimitHealth.Critical => WinForms.ToolTipIcon.Error,
+            LimitHealth.Warning => WinForms.ToolTipIcon.Warning,
+            _ => WinForms.ToolTipIcon.Info
+        };
+
+        _trayIcon.ShowBalloonTip(5000, $"AI Rate Limits — {result.Health}", text, icon);
+    }
+
+    private static string ProviderNameFor(
+        IReadOnlyDictionary<string, VendorRateLimitSnapshot> snapshots, Models.RateLimitBucket bucket)
+    {
+        foreach (var snapshot in snapshots.Values)
+        {
+            if (snapshot.Buckets.Contains(bucket))
+            {
+                return snapshot.DisplayName;
+            }
+        }
+
+        return "AI";
     }
 
     private void ShowMainWindow()
