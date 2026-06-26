@@ -20,14 +20,17 @@ public partial class MainWindow : Window
     private readonly RateLimitMonitor _monitor;
     private readonly SettingsStore _settingsStore;
     private readonly Func<Task> _copilotLogin;
+    private readonly Action _requestExit;
     private string? _selectedProvider;
 
-    public MainWindow(RateLimitMonitor monitor, SettingsStore settingsStore, Func<Task> copilotLogin)
+    public MainWindow(RateLimitMonitor monitor, SettingsStore settingsStore, Func<Task> copilotLogin,
+        Action requestExit)
     {
         InitializeComponent();
         _monitor = monitor;
         _settingsStore = settingsStore;
         _copilotLogin = copilotLogin;
+        _requestExit = requestExit;
         _monitor.Updated += OnUpdated;
         Render();
     }
@@ -77,6 +80,9 @@ public partial class MainWindow : Window
         CopilotHostBox.Text = s.CopilotEnterpriseHost;
         JetBrainsPathBox.Text = s.JetBrainsIdeBasePath;
         AutostartToggle.IsChecked = AutostartManager.IsEnabled();
+        ExitOnCloseToggle.IsChecked = s.ExitOnClose;
+        NotifyBelowBox.Text = s.NotifyBelowPercent?.ToString() ?? string.Empty;
+        AboutVersionText.Text = $"AI Rate Limits {AppVersion}";
         UpdateCopilotStatus();
     }
 
@@ -88,6 +94,8 @@ public partial class MainWindow : Window
         if (int.TryParse(RefreshBox.Text, out var refresh)) s.RefreshMinutes = refresh;
         s.CopilotEnterpriseHost = CopilotHostBox.Text.Trim();
         s.JetBrainsIdeBasePath = JetBrainsPathBox.Text.Trim();
+        s.ExitOnClose = ExitOnCloseToggle.IsChecked == true;
+        s.NotifyBelowPercent = int.TryParse(NotifyBelowBox.Text, out var below) ? below : null;
 
         _settingsStore.Save(s); // Normalizes/clamps on save.
         _monitor.ReloadSettings();
@@ -96,17 +104,48 @@ public partial class MainWindow : Window
         _ = _monitor.RefreshAsync();
     }
 
+    private static string AppVersion
+    {
+        get
+        {
+            var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+            return v is null ? "" : $"v{v.Major}.{v.Minor}.{v.Build}";
+        }
+    }
+
+    private void OpenRepo_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                "https://github.com/linusniederer/ai-rate-limits") { UseShellExecute = true });
+        }
+        catch
+        {
+            // Ignore if no browser is available.
+        }
+    }
+
     private void AutostartToggle_Click(object sender, RoutedEventArgs e)
     {
         AutostartManager.SetEnabled(AutostartToggle.IsChecked == true);
         AutostartToggle.IsChecked = AutostartManager.IsEnabled();
     }
 
-    /// <summary>Closing hides the window; the app only exits from the tray menu.</summary>
+    /// <summary>
+    /// Closing hides to tray by default; with the "exit on close" setting it quits the app instead.
+    /// </summary>
     protected override void OnClosing(CancelEventArgs e)
     {
         e.Cancel = true;
-        Hide();
+        if (_settingsStore.Load().ExitOnClose)
+        {
+            _requestExit();
+        }
+        else
+        {
+            Hide();
+        }
     }
 
     // ===================== Rendering =====================

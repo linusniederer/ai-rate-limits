@@ -22,12 +22,23 @@ public sealed class AppSettings
     public string JetBrainsIdeBasePath { get; set; } = string.Empty;
     public string CopilotEnterpriseHost { get; set; } = string.Empty;
 
+    // v1.1 behaviour settings
+    public bool CompactMode { get; set; }
+    public bool ExitOnClose { get; set; }
+    public int? NotifyBelowPercent { get; set; }
+
     /// <summary>Clamps all values to their valid ranges in-place. Mirrors blueprint validation rules.</summary>
     public void Normalize()
     {
         WarningUsedPercent = Math.Clamp(WarningUsedPercent, 1, 100);
         CriticalUsedPercent = Math.Clamp(CriticalUsedPercent, WarningUsedPercent, 100);
         RefreshMinutes = Math.Clamp(RefreshMinutes, 1, 240);
+
+        // Notify-below threshold: null/out-of-range disables it.
+        if (NotifyBelowPercent is { } n)
+        {
+            NotifyBelowPercent = n is > 0 and < 100 ? n : null;
+        }
 
         CodexCreditPriceUsd = AsPositiveOrNull(CodexCreditPriceUsd);
         CodexCreditMultiplier = AsPositiveOrNull(CodexCreditMultiplier);
