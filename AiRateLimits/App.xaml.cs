@@ -21,6 +21,7 @@ public partial class App : System.Windows.Application
     private SettingsStore? _settingsStore;
     private bool _copilotLoginInProgress;
     private LimitHealth? _lastNotifiedHealth;
+    private bool _belowThresholdNotified;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -57,7 +58,7 @@ public partial class App : System.Windows.Application
         _monitor = new RateLimitMonitor(providers, settingsStore);
         _monitor.Updated += OnMonitorUpdated;
 
-        _mainWindow = new MainWindow(_monitor, settingsStore, StartCopilotLoginAsync);
+        _mainWindow = new MainWindow(_monitor, settingsStore, StartCopilotLoginAsync, ExitApp);
 
         InitializeTrayIcon();
 
@@ -148,7 +149,14 @@ public partial class App : System.Windows.Application
         HealthCalculator.HealthResult result,
         IReadOnlyDictionary<string, VendorRateLimitSnapshot> snapshots)
     {
-        if (_trayIcon is null || result.Health == LimitHealth.Unknown || result.Health == _lastNotifiedHealth)
+        if (_trayIcon is null)
+        {
+            return;
+        }
+
+        MaybeNotifyBelowThreshold(result, snapshots);
+
+        if (result.Health == LimitHealth.Unknown || result.Health == _lastNotifiedHealth)
         {
             return;
         }
@@ -189,6 +197,40 @@ public partial class App : System.Windows.Application
         };
 
         _trayIcon.ShowBalloonTip(5000, $"AI Rate Limits — {result.Health}", text, icon);
+    }
+
+    /// <summary>
+    /// Optional opt-in alert: when the worst health-affecting bucket's remaining capacity drops
+    /// below the configured threshold, notify once until it recovers above the threshold.
+    /// </summary>
+    private void MaybeNotifyBelowThreshold(
+        HealthCalculator.HealthResult result,
+        IReadOnlyDictionary<string, VendorRateLimitSnapshot> snapshots)
+    {
+        var threshold = _settingsStore?.Load().NotifyBelowPercent;
+        if (threshold is not { } limit || result.WorstBucket is not { } bucket)
+        {
+            return;
+        }
+
+        if (bucket.RemainingPercent >= limit)
+        {
+            _belowThresholdNotified = false;
+            return;
+        }
+
+        if (_belowThresholdNotified)
+        {
+            return;
+        }
+
+        _belowThresholdNotified = true;
+        var provider = ProviderNameFor(snapshots, bucket);
+        _trayIcon!.ShowBalloonTip(
+            5000,
+            "AI Rate Limits — Low",
+            $"{provider} {bucket.Name}: {bucket.RemainingPercent:0.#}% available (below {limit}%).",
+            WinForms.ToolTipIcon.Warning);
     }
 
     private static string ProviderNameFor(

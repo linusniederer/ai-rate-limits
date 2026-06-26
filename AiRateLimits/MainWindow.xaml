@@ -78,8 +78,14 @@
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Status header -->
-                <Border Grid.Row="0" Background="{StaticResource CardBrush}" CornerRadius="12" Padding="16,14">
+                <!-- Status header (+ optional update banner) -->
+                <StackPanel Grid.Row="0">
+                <Border x:Name="UpdateBanner" Background="{StaticResource AccentBrush}" CornerRadius="10"
+                        Padding="12,8" Margin="0,0,0,10" Cursor="Hand" Visibility="Collapsed"
+                        MouseLeftButtonUp="UpdateBanner_Click">
+                    <TextBlock x:Name="UpdateBannerText" Foreground="White" FontSize="12" FontWeight="SemiBold" />
+                </Border>
+                <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="16,14">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -101,6 +107,7 @@
                                    VerticalAlignment="Center" Foreground="{StaticResource TextMutedBrush}" />
                     </Grid>
                 </Border>
+                </StackPanel>
 
                 <!-- Provider tabs -->
                 <StackPanel x:Name="TabsPanel" Grid.Row="1" Orientation="Horizontal" Margin="0,16,0,4" />
@@ -120,6 +127,11 @@
                               Stretch="Uniform" Width="15" Height="15" />
                     </Button>
                 </Grid>
+            </Grid>
+
+            <!-- ===== Body: compact view ===== -->
+            <Grid x:Name="CompactView" Grid.Row="1" Margin="16,2,16,14" Visibility="Collapsed">
+                <StackPanel x:Name="CompactPanel" />
             </Grid>
 
             <!-- ===== Body: settings view ===== -->
@@ -218,6 +230,60 @@
                             </Grid>
                         </Border>
 
+                        <!-- Behaviour -->
+                        <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="16,14"
+                                Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Behaviour" FontSize="12.5" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextBrush}" Margin="0,0,0,12" />
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Compact mode" FontSize="12"
+                                                   Foreground="{StaticResource TextBrush}" />
+                                        <TextBlock Text="Small window, status only" FontSize="10.5"
+                                                   Foreground="{StaticResource TextMutedBrush}" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="CompactToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Exit when closing" FontSize="12"
+                                                   Foreground="{StaticResource TextBrush}" />
+                                        <TextBlock Text="Off = hide to tray (default)" FontSize="10.5"
+                                                   Foreground="{StaticResource TextMutedBrush}" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="ExitOnCloseToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center" />
+                                </Grid>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="76" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Notify below" FontSize="12"
+                                                   Foreground="{StaticResource TextBrush}" />
+                                        <TextBlock Text="% available (empty = off)" FontSize="10.5"
+                                                   Foreground="{StaticResource TextMutedBrush}" />
+                                    </StackPanel>
+                                    <TextBox x:Name="NotifyBelowBox" Grid.Column="1"
+                                             Style="{StaticResource InputBox}" TextAlignment="Right" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <!-- GitHub Copilot -->
                         <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="16,14"
                                 Margin="0,0,0,12">
@@ -267,6 +333,28 @@
                                            Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,5" />
                                 <TextBox x:Name="JetBrainsPathBox" Style="{StaticResource InputBox}" />
                             </StackPanel>
+                        </Border>
+
+                        <!-- About -->
+                        <Border Background="{StaticResource CardBrush}" CornerRadius="12" Padding="16,14"
+                                Margin="0,0,0,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="AboutVersionText" Text="AI Rate Limits"
+                                               FontSize="12.5" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextBrush}" />
+                                    <TextBlock Text="MIT License" FontSize="10.5"
+                                               Foreground="{StaticResource TextMutedBrush}" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Style="{StaticResource GhostButton}" Padding="12,7"
+                                        VerticalAlignment="Center" Click="OpenRepo_Click">
+                                    <TextBlock Text="GitHub" />
+                                </Button>
+                            </Grid>
                         </Border>
 
                     </StackPanel>
