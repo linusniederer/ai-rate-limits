@@ -33,6 +33,7 @@ public partial class MainWindow : Window
         _requestExit = requestExit;
         _monitor.Updated += OnUpdated;
         Render();
+        ShowDefaultView();
     }
 
     private void OnUpdated(IReadOnlyDictionary<string, VendorRateLimitSnapshot> snapshots) =>
@@ -58,17 +59,43 @@ public partial class MainWindow : Window
     {
         LoadSettingsIntoUi();
         MainView.Visibility = Visibility.Collapsed;
+        CompactView.Visibility = Visibility.Collapsed;
         SettingsView.Visibility = Visibility.Visible;
         SettingsButton.Visibility = Visibility.Collapsed;
+        SetWindowSize(compact: false); // settings always uses the full layout
     }
 
-    private void SettingsBack_Click(object sender, RoutedEventArgs e) => ShowMainView();
+    private void SettingsBack_Click(object sender, RoutedEventArgs e) => ShowDefaultView();
 
-    private void ShowMainView()
+    /// <summary>Shows the compact or full main view depending on the setting, and sizes the window.</summary>
+    private void ShowDefaultView()
     {
+        var compact = _settingsStore.Load().CompactMode;
         SettingsView.Visibility = Visibility.Collapsed;
-        MainView.Visibility = Visibility.Visible;
         SettingsButton.Visibility = Visibility.Visible;
+        MainView.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        CompactView.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        if (compact)
+        {
+            RenderCompact();
+        }
+        SetWindowSize(compact);
+    }
+
+    private void SetWindowSize(bool compact)
+    {
+        if (compact)
+        {
+            Width = 320;
+            var rows = Math.Max(1, _monitor.FoundSnapshots.Count);
+            // title bar + shadow margins + content padding + rows
+            Height = 46 + 24 + 18 + rows * 34 + 6;
+        }
+        else
+        {
+            Width = 424;
+            Height = 628;
+        }
     }
 
     private void LoadSettingsIntoUi()
@@ -80,6 +107,7 @@ public partial class MainWindow : Window
         CopilotHostBox.Text = s.CopilotEnterpriseHost;
         JetBrainsPathBox.Text = s.JetBrainsIdeBasePath;
         AutostartToggle.IsChecked = AutostartManager.IsEnabled();
+        CompactToggle.IsChecked = s.CompactMode;
         ExitOnCloseToggle.IsChecked = s.ExitOnClose;
         NotifyBelowBox.Text = s.NotifyBelowPercent?.ToString() ?? string.Empty;
         AboutVersionText.Text = $"AI Rate Limits {AppVersion}";
@@ -95,12 +123,13 @@ public partial class MainWindow : Window
         s.CopilotEnterpriseHost = CopilotHostBox.Text.Trim();
         s.JetBrainsIdeBasePath = JetBrainsPathBox.Text.Trim();
         s.ExitOnClose = ExitOnCloseToggle.IsChecked == true;
+        s.CompactMode = CompactToggle.IsChecked == true;
         s.NotifyBelowPercent = int.TryParse(NotifyBelowBox.Text, out var below) ? below : null;
 
         _settingsStore.Save(s); // Normalizes/clamps on save.
         _monitor.ReloadSettings();
 
-        ShowMainView();
+        ShowDefaultView();
         _ = _monitor.RefreshAsync();
     }
 
@@ -167,6 +196,100 @@ public partial class MainWindow : Window
         RenderTabs(found);
         RenderDetail(found.FirstOrDefault(s => s.VendorId == _selectedProvider));
         UpdateCopilotStatus();
+
+        if (CompactView.Visibility == Visibility.Visible)
+        {
+            RenderCompact();
+            SetWindowSize(compact: true); // provider count may have changed
+        }
+    }
+
+    private void RenderCompact()
+    {
+        CompactPanel.Children.Clear();
+        var found = _monitor.FoundSnapshots;
+
+        if (found.Count == 0)
+        {
+            CompactPanel.Children.Add(new TextBlock
+            {
+                Text = "Searching for provider data…",
+                Foreground = Brush("TextMutedBrush"),
+                FontSize = 12,
+                Margin = new Thickness(2, 6, 0, 0)
+            });
+            return;
+        }
+
+        foreach (var snapshot in found)
+        {
+            CompactPanel.Children.Add(BuildCompactRow(snapshot));
+        }
+    }
+
+    private UIElement BuildCompactRow(VendorRateLimitSnapshot snapshot)
+    {
+        var health = HealthCalculator.Evaluate(
+            snapshot.Buckets, _monitor.Settings.WarningUsedPercent, _monitor.Settings.CriticalUsedPercent);
+        var healthBrush = HealthBrush(health.Health);
+
+        var worst = snapshot.Buckets
+            .Where(b => b.AffectsHealth)
+            .OrderBy(b => b.RemainingPercent)
+            .FirstOrDefault();
+
+        var grid = new Grid { Margin = new Thickness(0, 5, 0, 5), Cursor = Cursors.Hand };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var icon = new System.Windows.Shapes.Path
+        {
+            Data = (Geometry)FindResource(IconKey(snapshot.VendorId)),
+            Fill = Brush("TextSecondaryBrush"),
+            Stretch = Stretch.Uniform,
+            Width = 16,
+            Height = 16,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(icon, 0);
+        grid.Children.Add(icon);
+
+        var name = new TextBlock
+        {
+            Text = snapshot.DisplayName,
+            FontSize = 12.5,
+            Foreground = Brush("TextBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(9, 0, 0, 0)
+        };
+        Grid.SetColumn(name, 1);
+        grid.Children.Add(name);
+
+        var value = new TextBlock
+        {
+            Text = worst is { } w ? $"{w.RemainingPercent:0}%" : "—",
+            FontSize = 12.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = healthBrush,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 9, 0)
+        };
+        Grid.SetColumn(value, 2);
+        grid.Children.Add(value);
+
+        var dot = new Ellipse
+        {
+            Width = 9,
+            Height = 9,
+            Fill = healthBrush,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(dot, 3);
+        grid.Children.Add(dot);
+
+        return grid;
     }
 
     private void RenderStatusHeader(HealthCalculator.HealthResult aggregate)
