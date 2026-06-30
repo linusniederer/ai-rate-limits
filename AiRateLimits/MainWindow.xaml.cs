@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Shell;
 using AiRateLimits.Models;
 using AiRateLimits.Providers;
 using AiRateLimits.Providers.Copilot;
@@ -32,6 +33,7 @@ public partial class MainWindow : Window
         _settingsStore = settingsStore;
         _copilotLogin = copilotLogin;
         _requestExit = requestExit;
+        TaskbarItemInfo = new TaskbarItemInfo();
         _monitor.Updated += OnUpdated;
         Render();
         ShowDefaultView();
@@ -177,6 +179,26 @@ public partial class MainWindow : Window
 
     private void ApplyTopmost() => Topmost = _settingsStore.Load().AlwaysOnTop;
 
+    /// <summary>Shows a small health-colored dot as the taskbar button overlay.</summary>
+    private void UpdateTaskbarOverlay(LimitHealth health)
+    {
+        if (TaskbarItemInfo is null)
+        {
+            return;
+        }
+
+        var fill = HealthBrush(health);
+        var outline = new System.Windows.Media.Pen(
+            new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x99, 0, 0, 0)), 1.5);
+        var drawing = new GeometryDrawing(
+            fill, outline, new EllipseGeometry(new System.Windows.Point(8, 8), 7, 7));
+        var image = new DrawingImage(drawing);
+        image.Freeze();
+
+        TaskbarItemInfo.Overlay = image;
+        TaskbarItemInfo.Description = $"AI Rate Limits — {health}";
+    }
+
     private static string AppVersion
     {
         get
@@ -229,6 +251,7 @@ public partial class MainWindow : Window
         var aggregate = _monitor.AggregateHealth();
 
         RenderStatusHeader(aggregate);
+        UpdateTaskbarOverlay(aggregate.Health);
         LastUpdateText.Text = found.Count == 0 ? "" : $"Updated {DateTimeOffset.Now:HH:mm}";
 
         // Keep the selection valid as providers come and go.
