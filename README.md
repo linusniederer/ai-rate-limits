@@ -65,12 +65,16 @@ Each provider reads **local** state or a **personal** token; the app never modif
   (cached 24 h, with a built-in fallback). It is an estimate from local logs, not an official bill.
 
 ### Claude Code
-Claude Code only exposes Claude.ai (Pro/Max) usage to a **running interactive session**, so:
-- If the OAuth token in `~/.claude/.credentials.json` is still valid, the app queries the usage
-  API directly (read-only — it never refreshes or rewrites the token).
-- Otherwise it reads a file written by an optional **statusline helper**.
+Reads Claude.ai (Pro/Max) usage from the OAuth token Claude Code stores in
+`~/.claude/.credentials.json`:
+- Queries `api.anthropic.com/api/oauth/usage`. If the access token is expired, the app refreshes it
+  using the stored refresh token and writes the rotated tokens back in Claude Code's own format — so
+  reading usage **does not require running an interactive `claude` session**, and Claude Code's own
+  login keeps working.
+- If the API is temporarily unavailable, it falls back to a file written by an optional
+  **statusline helper**.
 
-To enable the statusline fallback, add to `~/.claude/settings.json`:
+The statusline fallback is optional. To enable it, add to `~/.claude/settings.json`:
 
 ```json
 {
