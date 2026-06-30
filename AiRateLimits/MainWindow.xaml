@@ -267,6 +267,21 @@
                                               Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center" />
                                 </Grid>
 
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Always on top" FontSize="12"
+                                                   Foreground="{StaticResource TextBrush}" />
+                                        <TextBlock Text="Keep window above others" FontSize="10.5"
+                                                   Foreground="{StaticResource TextMutedBrush}" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="AlwaysOnTopToggle" Grid.Column="1"
+                                              Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center" />
+                                </Grid>
+
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />

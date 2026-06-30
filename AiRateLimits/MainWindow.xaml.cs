@@ -35,6 +35,7 @@ public partial class MainWindow : Window
         _monitor.Updated += OnUpdated;
         Render();
         ShowDefaultView();
+        ApplyTopmost();
         _ = CheckForUpdateAsync();
     }
 
@@ -147,6 +148,7 @@ public partial class MainWindow : Window
         AutostartToggle.IsChecked = AutostartManager.IsEnabled();
         CompactToggle.IsChecked = s.CompactMode;
         ExitOnCloseToggle.IsChecked = s.ExitOnClose;
+        AlwaysOnTopToggle.IsChecked = s.AlwaysOnTop;
         NotifyBelowBox.Text = s.NotifyBelowPercent?.ToString() ?? string.Empty;
         AboutVersionText.Text = $"AI Rate Limits {AppVersion}";
         UpdateCopilotStatus();
@@ -162,14 +164,18 @@ public partial class MainWindow : Window
         s.JetBrainsIdeBasePath = JetBrainsPathBox.Text.Trim();
         s.ExitOnClose = ExitOnCloseToggle.IsChecked == true;
         s.CompactMode = CompactToggle.IsChecked == true;
+        s.AlwaysOnTop = AlwaysOnTopToggle.IsChecked == true;
         s.NotifyBelowPercent = int.TryParse(NotifyBelowBox.Text, out var below) ? below : null;
 
         _settingsStore.Save(s); // Normalizes/clamps on save.
         _monitor.ReloadSettings();
 
+        ApplyTopmost();
         ShowDefaultView();
         _ = _monitor.RefreshAsync();
     }
+
+    private void ApplyTopmost() => Topmost = _settingsStore.Load().AlwaysOnTop;
 
     private static string AppVersion
     {
