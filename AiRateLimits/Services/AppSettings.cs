@@ -25,6 +25,7 @@ public sealed class AppSettings
     // v1.1 behaviour settings
     public bool CompactMode { get; set; }
     public bool ExitOnClose { get; set; }
+    public bool AlwaysOnTop { get; set; }
     public int? NotifyBelowPercent { get; set; }
 
     /// <summary>Clamps all values to their valid ranges in-place. Mirrors blueprint validation rules.</summary>

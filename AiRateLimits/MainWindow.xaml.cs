@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using System.Windows.Shell;
 using AiRateLimits.Models;
 using AiRateLimits.Providers;
 using AiRateLimits.Providers.Copilot;
@@ -32,9 +33,11 @@ public partial class MainWindow : Window
         _settingsStore = settingsStore;
         _copilotLogin = copilotLogin;
         _requestExit = requestExit;
+        TaskbarItemInfo = new TaskbarItemInfo();
         _monitor.Updated += OnUpdated;
         Render();
         ShowDefaultView();
+        ApplyTopmost();
         _ = CheckForUpdateAsync();
     }
 
@@ -147,6 +150,7 @@ public partial class MainWindow : Window
         AutostartToggle.IsChecked = AutostartManager.IsEnabled();
         CompactToggle.IsChecked = s.CompactMode;
         ExitOnCloseToggle.IsChecked = s.ExitOnClose;
+        AlwaysOnTopToggle.IsChecked = s.AlwaysOnTop;
         NotifyBelowBox.Text = s.NotifyBelowPercent?.ToString() ?? string.Empty;
         AboutVersionText.Text = $"AI Rate Limits {AppVersion}";
         UpdateCopilotStatus();
@@ -162,13 +166,37 @@ public partial class MainWindow : Window
         s.JetBrainsIdeBasePath = JetBrainsPathBox.Text.Trim();
         s.ExitOnClose = ExitOnCloseToggle.IsChecked == true;
         s.CompactMode = CompactToggle.IsChecked == true;
+        s.AlwaysOnTop = AlwaysOnTopToggle.IsChecked == true;
         s.NotifyBelowPercent = int.TryParse(NotifyBelowBox.Text, out var below) ? below : null;
 
         _settingsStore.Save(s); // Normalizes/clamps on save.
         _monitor.ReloadSettings();
 
+        ApplyTopmost();
         ShowDefaultView();
         _ = _monitor.RefreshAsync();
+    }
+
+    private void ApplyTopmost() => Topmost = _settingsStore.Load().AlwaysOnTop;
+
+    /// <summary>Shows a small health-colored dot as the taskbar button overlay.</summary>
+    private void UpdateTaskbarOverlay(LimitHealth health)
+    {
+        if (TaskbarItemInfo is null)
+        {
+            return;
+        }
+
+        var fill = HealthBrush(health);
+        var outline = new System.Windows.Media.Pen(
+            new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x99, 0, 0, 0)), 1.5);
+        var drawing = new GeometryDrawing(
+            fill, outline, new EllipseGeometry(new System.Windows.Point(8, 8), 7, 7));
+        var image = new DrawingImage(drawing);
+        image.Freeze();
+
+        TaskbarItemInfo.Overlay = image;
+        TaskbarItemInfo.Description = $"AI Rate Limits — {health}";
     }
 
     private static string AppVersion
@@ -223,6 +251,7 @@ public partial class MainWindow : Window
         var aggregate = _monitor.AggregateHealth();
 
         RenderStatusHeader(aggregate);
+        UpdateTaskbarOverlay(aggregate.Health);
         LastUpdateText.Text = found.Count == 0 ? "" : $"Updated {DateTimeOffset.Now:HH:mm}";
 
         // Keep the selection valid as providers come and go.
