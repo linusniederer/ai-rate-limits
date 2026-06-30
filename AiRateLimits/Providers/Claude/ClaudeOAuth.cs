@@ -1,22 +1,31 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace AiRateLimits.Providers.Claude;
 
 /// <summary>
-/// Reads the Claude Code OAuth access token from ~/.claude/.credentials.json. Read-only: this app
-/// never refreshes or writes the token back, to avoid disturbing Claude Code's own auth.
+/// Claude Code OAuth credentials from ~/.claude/.credentials.json. Supports refreshing the access
+/// token via the rotating refresh token and writing it back in Claude Code's own format, so a
+/// refresh never breaks Claude Code's login.
 /// </summary>
-public sealed record ClaudeOAuth(string AccessToken, DateTimeOffset? ExpiresAt)
+public sealed record ClaudeOAuth(
+    string AccessToken,
+    string? RefreshToken,
+    DateTimeOffset? ExpiresAt,
+    string CredentialsPath)
 {
-    public bool IsExpired => ExpiresAt is { } e && DateTimeOffset.UtcNow >= e;
+    // Treat a token expiring within the next minute as already expired.
+    public bool IsExpired => ExpiresAt is { } e && DateTimeOffset.UtcNow >= e.AddMinutes(-1);
 
-    public static string CredentialsPath => Path.Combine(
+    public bool CanRefresh => !string.IsNullOrWhiteSpace(RefreshToken);
+
+    public static string DefaultPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", ".credentials.json");
 
-    public static ClaudeOAuth? TryRead()
+    public static ClaudeOAuth? TryRead(string? path = null)
     {
-        var path = CredentialsPath;
+        path ??= DefaultPath;
         if (!File.Exists(path))
         {
             return null;
@@ -29,13 +38,13 @@ public sealed record ClaudeOAuth(string AccessToken, DateTimeOffset? ExpiresAt)
             return null;
         }
 
-        var token = oauth.TryGetProperty("accessToken", out var t) && t.ValueKind == JsonValueKind.String
-            ? t.GetString()
-            : null;
+        var token = GetString(oauth, "accessToken");
         if (string.IsNullOrWhiteSpace(token))
         {
             return null;
         }
+
+        var refresh = GetString(oauth, "refreshToken");
 
         DateTimeOffset? expires = null;
         if (oauth.TryGetProperty("expiresAt", out var e) && e.ValueKind == JsonValueKind.Number &&
@@ -44,6 +53,50 @@ public sealed record ClaudeOAuth(string AccessToken, DateTimeOffset? ExpiresAt)
             expires = DateTimeOffset.FromUnixTimeMilliseconds(ms);
         }
 
-        return new ClaudeOAuth(token, expires);
+        return new ClaudeOAuth(token!, refresh, expires, path);
     }
+
+    /// <summary>
+    /// Writes the refreshed tokens back into the existing credentials file, preserving all other
+    /// fields and Claude Code's structure (claudeAiOauth.{accessToken,refreshToken,expiresAt}).
+    /// </summary>
+    public ClaudeOAuth WithRefreshed(string newAccessToken, string? newRefreshToken, DateTimeOffset? newExpiresAt)
+    {
+        try
+        {
+            if (File.Exists(CredentialsPath) &&
+                JsonNode.Parse(File.ReadAllText(CredentialsPath)) is JsonObject root)
+            {
+                var oauth = root["claudeAiOauth"] as JsonObject ?? new JsonObject();
+                root["claudeAiOauth"] = oauth;
+                oauth["accessToken"] = newAccessToken;
+                if (!string.IsNullOrWhiteSpace(newRefreshToken))
+                {
+                    oauth["refreshToken"] = newRefreshToken;
+                }
+                if (newExpiresAt is { } exp)
+                {
+                    oauth["expiresAt"] = exp.ToUnixTimeMilliseconds();
+                }
+
+                File.WriteAllText(CredentialsPath, root.ToJsonString());
+            }
+        }
+        catch
+        {
+            // If we cannot persist, still return the in-memory refreshed credentials for this run.
+        }
+
+        return this with
+        {
+            AccessToken = newAccessToken,
+            RefreshToken = string.IsNullOrWhiteSpace(newRefreshToken) ? RefreshToken : newRefreshToken,
+            ExpiresAt = newExpiresAt ?? ExpiresAt
+        };
+    }
+
+    private static string? GetString(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
 }

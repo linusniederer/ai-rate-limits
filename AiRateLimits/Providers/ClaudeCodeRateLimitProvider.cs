@@ -9,9 +9,10 @@ using Serilog;
 namespace AiRateLimits.Providers;
 
 /// <summary>
-/// Claude Code (Claude.ai Pro/Max) provider. Tries the OAuth usage API first when a valid token
-/// is present, then falls back to the statusline helper's local file. The token is read-only — this
-/// app never refreshes or rewrites Claude Code's credentials.
+/// Claude Code (Claude.ai Pro/Max) provider. Reads the OAuth usage API, refreshing the access token
+/// via the stored refresh token when needed (and writing it back in Claude Code's own format), then
+/// falls back to the statusline helper's local file. Refreshing means no interactive Claude Code
+/// session is required just to read usage.
 /// </summary>
 public sealed class ClaudeCodeRateLimitProvider : IRateLimitProvider
 {
@@ -20,6 +21,10 @@ public sealed class ClaudeCodeRateLimitProvider : IRateLimitProvider
     private const string SourceApi = "api";
     private const string SourceStatusline = "statusline";
     private const string UsageUrl = "https://api.anthropic.com/api/oauth/usage";
+    private const string RefreshUrl = "https://platform.claude.com/v1/oauth/token";
+    private const string OAuthClientId = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+    private const string RefreshScope =
+        "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
     private const string FiveHourName = "5 hour window";
     private const string WeeklyName = "Weekly window";
 
@@ -65,29 +70,36 @@ public sealed class ClaudeCodeRateLimitProvider : IRateLimitProvider
 
     private async Task<VendorRateLimitSnapshot?> TryReadApiAsync(CancellationToken cancellationToken)
     {
-        var auth = ClaudeOAuth.TryRead();
-        if (auth is null || auth.IsExpired)
+        var creds = ClaudeOAuth.TryRead();
+        if (creds is null)
         {
-            // Refreshing would require the rotating refresh token and could break Claude Code's
-            // login, so we deliberately skip the API when the token is missing or expired.
             return null;
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, UsageUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
-        request.Headers.TryAddWithoutValidation("anthropic-beta", "oauth-2025-04-20");
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-        using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
+        // Refresh proactively if the token is already expired and we can.
+        if (creds.IsExpired && creds.CanRefresh)
         {
-            Log.Warning("Claude usage API returned {Status}", (int)response.StatusCode);
+            creds = await TryRefreshAsync(creds, cancellationToken).ConfigureAwait(false) ?? creds;
+        }
+
+        var json = await SendUsageAsync(creds.AccessToken, cancellationToken).ConfigureAwait(false);
+
+        // A 401 (json == null) on a token we did not just refresh: refresh once and retry.
+        if (json is null && creds.CanRefresh)
+        {
+            var refreshed = await TryRefreshAsync(creds, cancellationToken).ConfigureAwait(false);
+            if (refreshed is not null)
+            {
+                json = await SendUsageAsync(refreshed.AccessToken, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        if (json is null)
+        {
             return null;
         }
 
-        var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         using var doc = JsonDocument.Parse(json);
-
         var container = FindRateLimitsContainer(doc.RootElement);
         var buckets = new List<RateLimitBucket>();
         AddApiWindow(buckets, container, FiveHourName, TimeSpan.FromHours(5), "five_hour", "5h");
@@ -103,6 +115,92 @@ public sealed class ClaudeCodeRateLimitProvider : IRateLimitProvider
         return new VendorRateLimitSnapshot(
             Id, DisplayName, SourceApi, PlanType: null, buckets, CostUsage: null,
             ObservedAt: DateTimeOffset.Now, Error: null);
+    }
+
+    /// <summary>Calls the OAuth usage endpoint; returns the body on success, null on any failure.</summary>
+    private static async Task<string?> SendUsageAsync(string accessToken, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, UsageUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        request.Headers.TryAddWithoutValidation("anthropic-beta", "oauth-2025-04-20");
+        request.Headers.TryAddWithoutValidation("User-Agent", "claude-code/2.1.0");
+
+        using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            Log.Warning("Claude usage API returned {Status}", (int)response.StatusCode);
+            return null;
+        }
+
+        return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Exchanges the refresh token for a fresh access token and persists the rotated tokens back into
+    /// Claude Code's credentials file. Returns the refreshed credentials, or null on failure.
+    /// </summary>
+    private static async Task<ClaudeOAuth?> TryRefreshAsync(ClaudeOAuth creds, CancellationToken cancellationToken)
+    {
+        if (!creds.CanRefresh)
+        {
+            return null;
+        }
+
+        try
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                grant_type = "refresh_token",
+                refresh_token = creds.RefreshToken,
+                client_id = OAuthClientId,
+                scope = RefreshScope
+            });
+
+            using var request = new HttpRequestMessage(HttpMethod.Post, RefreshUrl)
+            {
+                Content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json")
+            };
+
+            using var response = await Http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                Log.Warning("Claude token refresh returned {Status}", (int)response.StatusCode);
+                return null;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+
+            var newAccess = root.TryGetProperty("access_token", out var a) && a.ValueKind == JsonValueKind.String
+                ? a.GetString()
+                : null;
+            if (string.IsNullOrWhiteSpace(newAccess))
+            {
+                return null;
+            }
+
+            var newRefresh = root.TryGetProperty("refresh_token", out var r) && r.ValueKind == JsonValueKind.String
+                ? r.GetString()
+                : null;
+
+            DateTimeOffset? newExpires = root.TryGetProperty("expires_in", out var e) &&
+                                         e.ValueKind == JsonValueKind.Number && e.TryGetDouble(out var secs)
+                ? DateTimeOffset.UtcNow.AddSeconds(secs)
+                : null;
+
+            return creds.WithRefreshed(newAccess!, newRefresh, newExpires);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Claude token refresh failed");
+            return null;
+        }
     }
 
     /// <summary>

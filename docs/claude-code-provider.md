@@ -5,31 +5,29 @@ the 5-hour rolling window and the weekly (7-day) window.
 
 ## How it works
 
-Claude Code does **not** expose subscription rate limits through a stable API or any persistent
-file. It only passes them to a configured **statusline command**, on the stdin JSON, as a
-`rate_limits` field:
+The provider has two paths, tried in order:
 
-```json
-"rate_limits": {
-  "five_hour": { "used_percentage": 23.5, "resets_at": 1738425600 },
-  "seven_day": { "used_percentage": 41.2, "resets_at": 1738857600 }
-}
-```
+1. **OAuth usage API (primary).** It reads the OAuth token Claude Code stores in
+   `~/.claude/.credentials.json` and calls `https://api.anthropic.com/api/oauth/usage`. When the
+   access token has expired, it exchanges the stored **refresh token** for a fresh access token at
+   `https://platform.claude.com/v1/oauth/token` and writes the rotated tokens back into the
+   credentials file in Claude Code's own format. Because of this, reading usage **does not require
+   an interactive `claude` session**, and Claude Code's own login is preserved.
 
-So the integration has two parts:
+2. **Statusline helper (fallback).** If the API is unavailable (e.g. temporarily rate-limited), the
+   provider reads a file written by an optional statusline helper
+   ([`tools/claude-statusline-capture.ps1`](../tools/claude-statusline-capture.ps1)) at
+   `%LOCALAPPDATA%\AiRateLimits\claude\rate_limits.json`. Claude Code passes usage to a statusline
+   command as a `rate_limits` field:
 
-1. A **statusline helper** ([`tools/claude-statusline-capture.ps1`](../tools/claude-statusline-capture.ps1))
-   that Claude Code runs on every status refresh. It writes `rate_limits` to a local file and
-   still prints a compact status bar.
-2. The **`ClaudeCodeRateLimitProvider`**, which reads that file:
-
+   ```json
+   "rate_limits": {
+     "five_hour": { "used_percentage": 23.5, "resets_at": 1738425600 },
+     "seven_day": { "used_percentage": 41.2, "resets_at": 1738857600 }
+   }
    ```
-   %LOCALAPPDATA%\AiRateLimits\claude\rate_limits.json
-   ```
 
-The provider and the helper agree on this path.
-
-## Setup
+## Optional statusline fallback setup
 
 1. Add the helper to your Claude Code `settings.json` (`~/.claude/settings.json`):
 
